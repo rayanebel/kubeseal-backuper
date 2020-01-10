@@ -1,6 +1,7 @@
 package config
 
 type Config struct {
+	KubernetesKubeconfigPath    string `envconfig:"KUBERNETES_KUBECONFIG_PATH"`
 	KubernetesClientMode        string `envconfig:"KUBERNETES_CLIENT_MODE" default:"internal"`
 	KubesealControllerName      string `envconfig:"KUBESEAL_CONTROLLER_NAME" default:"kubeseal-controller"`
 	KubesealControllerNamespace string `envconfig:"KUBESEAL_CONTROLLER_NAMESPACE" default:"kubeseal"`

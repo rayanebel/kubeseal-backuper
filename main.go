@@ -3,10 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/rayanebel/kubeseal-backuper/pkg/config"
 	"log"
 	"os"
-	"path/filepath"
+
+	"github.com/rayanebel/kubeseal-backuper/pkg/config"
 
 	"github.com/rayanebel/kubeseal-backuper/pkg/backend/s3"
 	"github.com/rayanebel/kubeseal-backuper/pkg/utils"
@@ -24,14 +24,15 @@ const (
 	kubesealSecretLabel = "sealedsecrets.bitnami.com/sealed-secrets-key"
 )
 
-func setKubernetesclient(mode string) *kubernetes.Clientset {
+func setKubernetesclient(config *config.Config) *kubernetes.Clientset {
 	var clientset *kubernetes.Clientset
 	var err error
-	switch mode {
+	switch config.KubernetesClientMode {
 	case "external":
-		home := utils.HomeDir()
-		kubeconfigPath := filepath.Join(home, ".kube", "config")
-		clientset, err = kube.NewOutKubernetesClient(kubeconfigPath)
+		if config.KubernetesKubeconfigPath == "" {
+			log.Fatalf("No kubeconfig path has been provided. Please set KUBERNETES_KUBECONFIG_PATH if your are in external mode")
+		}
+		clientset, err = kube.NewOutKubernetesClient(config.KubernetesKubeconfigPath)
 
 		if err != nil {
 			log.Fatalf("Unable to init external kubernetes client: %s", err.Error())
@@ -47,7 +48,7 @@ func setKubernetesclient(mode string) *kubernetes.Clientset {
 }
 
 func runBackup(config *config.Config) {
-	clientset := setKubernetesclient(config.KubernetesClientMode)
+	clientset := setKubernetesclient(config)
 
 	labelSelector := kubesealSecretLabel
 	opts := metav1.ListOptions{
