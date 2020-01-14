@@ -29,6 +29,7 @@ const (
 
 var state *config.State
 
+// run - will execute all steps to backup and clean sealed secret key.
 func run() {
 	k8sutils.SetKubernetesclient(state)
 	processBackup(state)
@@ -58,6 +59,7 @@ func run() {
 	}
 }
 
+// processBackup - will process the backup of sealedsecret and export it into an external storage endpoint.
 func processBackup(state *config.State) {
 	labelSelector := kubesealSecretLabel
 	opts := metav1.ListOptions{
@@ -131,6 +133,7 @@ func processBackup(state *config.State) {
 
 }
 
+// main program
 func main() {
 	conf := &config.Config{}
 	err := envconfig.Process("", conf)
@@ -147,6 +150,7 @@ func main() {
 	run()
 }
 
+// init function
 func init() {
 	log.SetFormatter(&log.TextFormatter{
 		DisableColors: false,

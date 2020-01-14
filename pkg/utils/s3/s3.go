@@ -12,6 +12,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// StoreSecretKeyToS3 - Utils to store kubeseal key into s3
 func StoreSecretKeyToS3(state *config.State, file *os.File) {
 	var err error
 	state.AWSClient, err = s3.New(state.Config.AWSRegion)

@@ -4,6 +4,7 @@ import (
 	"os"
 )
 
+// HomeDir - Utils to find $HOME path on windows and linux
 func HomeDir() string {
 	if h := os.Getenv("HOME"); h != "" {
 		return h

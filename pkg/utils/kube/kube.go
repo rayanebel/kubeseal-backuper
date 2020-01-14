@@ -23,6 +23,7 @@ const (
 	kubesealSecretLabel = "sealedsecrets.bitnami.com/sealed-secrets-key"
 )
 
+// KubernetesJson2Yaml - Utils to convert k8s json into yaml
 func KubernetesJson2Yaml(obj runtime.Object) (string, error) {
 	tmpfile, err := ioutil.TempFile("", "kubeseal-key")
 	if err != nil {
@@ -44,6 +45,7 @@ func KubernetesJson2Yaml(obj runtime.Object) (string, error) {
 	return tmpfile.Name(), nil
 }
 
+// GetGVKForObject - Retrieve Object type and version for a given object. K8s API intentionnaly remove this fields.
 func GetGVKForObject(obj runtime.Object) (schema.GroupVersionKind, error) {
 	gvk, err := apiutil.GVKForObject(obj, scheme.Scheme)
 	if err != nil {
@@ -52,6 +54,7 @@ func GetGVKForObject(obj runtime.Object) (schema.GroupVersionKind, error) {
 	return gvk, nil
 }
 
+// SetGVKForObject - Set API version and Object type for a given k8s object.
 func SetGVKForObject(obj runtime.Object) {
 	gvk, _ := GetGVKForObject(obj)
 	obj.GetObjectKind().SetGroupVersionKind(schema.GroupVersionKind{
@@ -61,6 +64,7 @@ func SetGVKForObject(obj runtime.Object) {
 	})
 }
 
+// CleanCommonKubernetesFields - To clean common kubernetes fields before processing.
 func CleanCommonKubernetesFields(obj *unstructured.Unstructured) {
 	obj.SetCreationTimestamp(metav1.Time{})
 	obj.SetSelfLink("")
@@ -68,6 +72,7 @@ func CleanCommonKubernetesFields(obj *unstructured.Unstructured) {
 	obj.SetUID("")
 }
 
+// SetKubernetesclient - Utils to define and init the right k8s client.
 func SetKubernetesclient(state *config.State) {
 	log.WithFields(log.Fields{
 		"mode": state.Config.KubernetesClientMode,
@@ -101,6 +106,7 @@ func SetKubernetesclient(state *config.State) {
 	}
 }
 
+// RestartKubesealPods - Utils to restart kubeseal pods by deleting them and let k8s recreate them.
 func RestartKubesealPods(labels string, state *config.State) {
 	// Add controller-name as labels to use config.KubesealControllerName
 	opts := metav1.ListOptions{
@@ -123,7 +129,7 @@ func RestartKubesealPods(labels string, state *config.State) {
 	}
 }
 
-// cleanup secret by setting old key as compromised and restart pods
+// CleanSecret - Utils to cleanup secret by updating custom labels and restarting kubeseal pods.
 func CleanSecret(state *config.State) {
 
 	labelSelector := kubesealSecretLabel

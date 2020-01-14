@@ -6,6 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
 
+// New - Init AWS client
 func New(region string) (*session.Session, error) {
 	sess, err := session.NewSession(&aws.Config{
 		Region: aws.String(region)},
@@ -16,6 +17,7 @@ func New(region string) (*session.Session, error) {
 	return sess, nil
 }
 
+// PutObject - To upload object into an s3 bucket
 func PutObject(session *session.Session, input *s3manager.UploadInput) error {
 	uploader := s3manager.NewUploader(session)
 	_, err := uploader.Upload(input)

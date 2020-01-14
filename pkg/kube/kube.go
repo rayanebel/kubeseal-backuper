@@ -15,6 +15,7 @@ type KuberneteClient struct {
 	Client *kubernetes.Clientset
 }
 
+// NewOutKubernetesClient - To init an external k8s client
 func NewOutKubernetesClient(kubeConfigPath string) (*KuberneteClient, error) {
 	conf, err := clientcmd.BuildConfigFromFlags("", kubeConfigPath)
 	if err != nil {
@@ -28,6 +29,7 @@ func NewOutKubernetesClient(kubeConfigPath string) (*KuberneteClient, error) {
 	return &KuberneteClient{Client: clientset}, nil
 }
 
+// NewInKubernetesClient - To init an internal k8s client
 func NewInKubernetesClient() (*KuberneteClient, error) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
@@ -41,6 +43,7 @@ func NewInKubernetesClient() (*KuberneteClient, error) {
 	return &KuberneteClient{Client: clientset}, nil
 }
 
+// ListSecrets - To list all k8s secrets
 func (s *KuberneteClient) ListSecrets(namespace string, opts metav1.ListOptions) (*v1.SecretList, error) {
 	secrets, err := s.Client.CoreV1().Secrets(namespace).List(opts)
 	if err != nil {
@@ -55,6 +58,7 @@ func (s *KuberneteClient) ListSecrets(namespace string, opts metav1.ListOptions)
 	return secrets, nil
 }
 
+// ListPods - To list all k8s pods
 func (s *KuberneteClient) ListPods(namespace string, opts metav1.ListOptions) (*v1.PodList, error) {
 	pods, err := s.Client.CoreV1().Pods(namespace).List(opts)
 	if err != nil {
@@ -69,6 +73,7 @@ func (s *KuberneteClient) ListPods(namespace string, opts metav1.ListOptions) (*
 	return pods, nil
 }
 
+// UpdateSecret - To update a given secret
 func (s *KuberneteClient) UpdateSecret(updatedSecret *v1.Secret) error {
 	_, err := s.Client.CoreV1().Secrets(updatedSecret.Namespace).Update(updatedSecret)
 	if err != nil {
@@ -77,6 +82,7 @@ func (s *KuberneteClient) UpdateSecret(updatedSecret *v1.Secret) error {
 	return nil
 }
 
+// DeletePods - To delete a list of pods
 func (s *KuberneteClient) DeletePods(pods *v1.PodList) error {
 	for _, pod := range pods.Items {
 		log.WithFields(log.Fields{

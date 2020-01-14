@@ -10,6 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// InitSlack - Utils to check and init slack client.
 func InitSlack(state *config.State) {
 	if state.Config.SlackAPIToken == "" {
 		log.Error("Config error: mission Slack API Token")
@@ -22,6 +23,7 @@ func InitSlack(state *config.State) {
 	state.SlackClient = slackclient.New(state.Config.SlackAPIToken)
 }
 
+// NotifySlack - Utils to send message to slack.
 func NotifySlack(state *config.State, message slackclient.SlackMessage) {
 	err := state.SlackClient.NewMessage(message)
 	if err != nil {
