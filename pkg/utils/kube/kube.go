@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 
+	log "github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -17,7 +18,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
-func NewOutKubernetesClient(kubeConfigPath string) (*kubernetes.Clientset, error) {
+type KuberneteClient struct {
+	Client *kubernetes.Clientset
+}
+
+func NewOutKubernetesClient(kubeConfigPath string) (*KuberneteClient, error) {
 	conf, err := clientcmd.BuildConfigFromFlags("", kubeConfigPath)
 	if err != nil {
 		return nil, err
@@ -27,10 +32,10 @@ func NewOutKubernetesClient(kubeConfigPath string) (*kubernetes.Clientset, error
 	if err != nil {
 		return nil, err
 	}
-	return clientset, nil
+	return &KuberneteClient{Client: clientset}, nil
 }
 
-func NewInKubernetesClient() (*kubernetes.Clientset, error) {
+func NewInKubernetesClient() (*KuberneteClient, error) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		return nil, err
@@ -40,7 +45,60 @@ func NewInKubernetesClient() (*kubernetes.Clientset, error) {
 	if err != nil {
 		return nil, err
 	}
-	return clientset, nil
+	return &KuberneteClient{Client: clientset}, nil
+}
+
+func (s *KuberneteClient) ListSecrets(namespace string, opts metav1.ListOptions) (*v1.SecretList, error) {
+	secrets, err := s.Client.CoreV1().Secrets(namespace).List(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(secrets.Items) == 0 {
+		err = fmt.Errorf("No secrets with labels %s in namespace %s was found", opts.LabelSelector, namespace)
+		return nil, err
+	}
+
+	return secrets, nil
+}
+
+func (s *KuberneteClient) ListPods(namespace string, opts metav1.ListOptions) (*v1.PodList, error) {
+	pods, err := s.Client.CoreV1().Pods(namespace).List(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(pods.Items) == 0 {
+		err = fmt.Errorf("No secrets with labels %s in namespace %s was found", opts.LabelSelector, namespace)
+		return nil, err
+	}
+
+	return pods, nil
+}
+
+func (s *KuberneteClient) UpdateSecret(updatedSecret *v1.Secret) error {
+	_, err := s.Client.CoreV1().Secrets(updatedSecret.Namespace).Update(updatedSecret)
+	if err != nil {
+		return fmt.Errorf("Unable to update secrets: %s", err.Error())
+	}
+	return nil
+}
+
+func (s *KuberneteClient) DeletePods(pods *v1.PodList) error {
+	for _, pod := range pods.Items {
+		log.WithFields(log.Fields{
+			"podName": pod.Name,
+		}).Warning("Trying to delete pod")
+		err := s.Client.CoreV1().Pods(pod.Namespace).Delete(pod.Name, &metav1.DeleteOptions{})
+		if err != nil {
+			msg := fmt.Errorf("Unable to delete pod %s: ", err.Error())
+			return msg
+		}
+		log.WithFields(log.Fields{
+			"podName": pod.Name,
+		}).Info("Pod has been deleted")
+	}
+	return nil
 }
 
 func KubernetesJson2Yaml(obj runtime.Object) (string, error) {
@@ -62,20 +120,6 @@ func KubernetesJson2Yaml(obj runtime.Object) (string, error) {
 		return "", err
 	}
 	return tmpfile.Name(), nil
-}
-
-func ListSecrets(clientset *kubernetes.Clientset, namespace string, opts metav1.ListOptions) (*v1.SecretList, error) {
-	secrets, err := clientset.CoreV1().Secrets(namespace).List(opts)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(secrets.Items) == 0 {
-		err = fmt.Errorf("No secrets with labels %s in namespace %s was found", opts.LabelSelector, namespace)
-		return nil, err
-	}
-
-	return secrets, nil
 }
 
 func GetGVKForObject(obj runtime.Object) (schema.GroupVersionKind, error) {
