@@ -1,105 +1,27 @@
-package kube
+package k8sutils
 
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
+	"sort"
 
+	"github.com/rayanebel/kubeseal-backuper/pkg/config"
+	"github.com/rayanebel/kubeseal-backuper/pkg/kube"
+	"github.com/rayanebel/kubeseal-backuper/pkg/utils/kubeseal"
 	log "github.com/sirupsen/logrus"
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8sjson "k8s.io/apimachinery/pkg/runtime/serializer/json"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
-type KuberneteClient struct {
-	Client *kubernetes.Clientset
-}
-
-func NewOutKubernetesClient(kubeConfigPath string) (*KuberneteClient, error) {
-	conf, err := clientcmd.BuildConfigFromFlags("", kubeConfigPath)
-	if err != nil {
-		return nil, err
-	}
-
-	clientset, err := kubernetes.NewForConfig(conf)
-	if err != nil {
-		return nil, err
-	}
-	return &KuberneteClient{Client: clientset}, nil
-}
-
-func NewInKubernetesClient() (*KuberneteClient, error) {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		return nil, err
-	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, err
-	}
-	return &KuberneteClient{Client: clientset}, nil
-}
-
-func (s *KuberneteClient) ListSecrets(namespace string, opts metav1.ListOptions) (*v1.SecretList, error) {
-	secrets, err := s.Client.CoreV1().Secrets(namespace).List(opts)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(secrets.Items) == 0 {
-		err = fmt.Errorf("No secrets with labels %s in namespace %s was found", opts.LabelSelector, namespace)
-		return nil, err
-	}
-
-	return secrets, nil
-}
-
-func (s *KuberneteClient) ListPods(namespace string, opts metav1.ListOptions) (*v1.PodList, error) {
-	pods, err := s.Client.CoreV1().Pods(namespace).List(opts)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(pods.Items) == 0 {
-		err = fmt.Errorf("No secrets with labels %s in namespace %s was found", opts.LabelSelector, namespace)
-		return nil, err
-	}
-
-	return pods, nil
-}
-
-func (s *KuberneteClient) UpdateSecret(updatedSecret *v1.Secret) error {
-	_, err := s.Client.CoreV1().Secrets(updatedSecret.Namespace).Update(updatedSecret)
-	if err != nil {
-		return fmt.Errorf("Unable to update secrets: %s", err.Error())
-	}
-	return nil
-}
-
-func (s *KuberneteClient) DeletePods(pods *v1.PodList) error {
-	for _, pod := range pods.Items {
-		log.WithFields(log.Fields{
-			"podName": pod.Name,
-		}).Warning("Trying to delete pod")
-		err := s.Client.CoreV1().Pods(pod.Namespace).Delete(pod.Name, &metav1.DeleteOptions{})
-		if err != nil {
-			msg := fmt.Errorf("Unable to delete pod %s: ", err.Error())
-			return msg
-		}
-		log.WithFields(log.Fields{
-			"podName": pod.Name,
-		}).Info("Pod has been deleted")
-	}
-	return nil
-}
+const (
+	kubesealSecretLabel = "sealedsecrets.bitnami.com/sealed-secrets-key"
+)
 
 func KubernetesJson2Yaml(obj runtime.Object) (string, error) {
 	tmpfile, err := ioutil.TempFile("", "kubeseal-key")
@@ -144,4 +66,93 @@ func CleanCommonKubernetesFields(obj *unstructured.Unstructured) {
 	obj.SetSelfLink("")
 	obj.SetResourceVersion("")
 	obj.SetUID("")
+}
+
+func SetKubernetesclient(state *config.State) {
+	log.WithFields(log.Fields{
+		"mode": state.Config.KubernetesClientMode,
+	}).Info("Trying to setup kubernetes client")
+	var err error
+	switch state.Config.KubernetesClientMode {
+	case "external":
+		if state.Config.KubernetesKubeconfigPath == "" {
+			log.WithFields(log.Fields{}).Error("No kubeconfig path has been provided. Please set KUBERNETES_KUBECONFIG_PATH if your are in external mode")
+			os.Exit(1)
+		}
+		state.K8s, err = kube.NewOutKubernetesClient(state.Config.KubernetesKubeconfigPath)
+
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("Unable to init external kubernetes client")
+			os.Exit(1)
+		}
+	case "internal":
+		state.K8s, err = kube.NewInKubernetesClient()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("Unable to init internal kubernetes client")
+			os.Exit(1)
+		}
+	default:
+		log.WithFields(log.Fields{}).Error("Unable to init kubernetes client: client mode set is invalid.")
+		os.Exit(1)
+	}
+}
+
+func RestartKubesealPods(labels string, state *config.State) {
+	// Add controller-name as labels to use config.KubesealControllerName
+	opts := metav1.ListOptions{
+		LabelSelector: labels,
+	}
+	kubesealPods, err := state.K8s.ListPods(state.Config.KubesealControllerNamespace, opts)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":     err.Error(),
+			"namespace": state.Config.KubesealControllerNamespace,
+		}).Error("Unable to list pods")
+		os.Exit(1)
+	}
+	err = state.K8s.DeletePods(kubesealPods)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("Unable to delete kubeseal pods")
+		os.Exit(1)
+	}
+}
+
+// cleanup secret by setting old key as compromised and restart pods
+func CleanSecret(state *config.State) {
+
+	labelSelector := kubesealSecretLabel
+	opts := metav1.ListOptions{
+		LabelSelector: labelSelector,
+	}
+	list, _ := state.K8s.ListSecrets(state.Config.KubesealControllerNamespace, opts)
+	sort.Sort(kubeseal.ByCreationTimestamp(list.Items))
+	latestKey := &list.Items[len(list.Items)-1]
+
+	log.WithFields(log.Fields{
+		"latest": latestKey.Name,
+	}).Info("Latest sealed secret")
+
+	for _, key := range list.Items {
+		if key.Name == latestKey.Name {
+			continue
+		}
+		log.WithFields(log.Fields{
+			"key": key.Name,
+		}).Info("Disable secret key")
+
+		key.Labels[kubesealSecretLabel] = "compromised"
+		state.K8s.UpdateSecret(&key)
+	}
+	log.WithFields(log.Fields{
+		"labels": "app.kubernetes.io/instance=kubeseal",
+	}).Warning("Restarting kubeseal controller with labels")
+
+	RestartKubesealPods("app.kubernetes.io/instance=kubeseal", state)
+	log.WithFields(log.Fields{}).Info("Kubeseal controller has been restarted.")
 }

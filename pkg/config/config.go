@@ -3,7 +3,7 @@ package config
 import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	slackclient "github.com/rayanebel/kubeseal-backuper/pkg/notifiers/slack"
-	"github.com/rayanebel/kubeseal-backuper/pkg/utils/kube"
+	"github.com/rayanebel/kubeseal-backuper/pkg/kube"
 )
 
 type Config struct {
